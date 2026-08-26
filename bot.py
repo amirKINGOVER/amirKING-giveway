@@ -9,7 +9,7 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="§", intents=intents)
 
-# قائمة لحفظ الأيديوهات للأشخاص الذين أخذوا حساباً مسبقاً
+# قائمة لحفظ الأيديوهات للأشخاص الذين أخذوا حساباً مسبقاً عبر الزر
 claimed_users = set()
 
 # حط الآيدي حقك هنا يا ملك عشان تستثنى من قيد الحساب الواحد وتجرب براحتك!
@@ -18,9 +18,9 @@ OWNER_ID = 1479080698009747519
 @bot.event
 async def on_ready():
     print(f"✅ تم تسجيل الدخول بنجاح كـ {bot.user}")
-    await bot.change_presence(activity=discord.Game(name="§setup لإنشاء لوحة الحسابات"))
+    await bot.change_presence(activity=discord.Game(name="§setup لوحة الحسابات | §sent للإرسال اليدوي"))
 
-# تصميم الزر التفاعلي
+# --- 1. نظام الزر التفاعلي (Get Account) ---
 class AccountView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -29,10 +29,8 @@ class AccountView(discord.ui.View):
     async def get_account_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         member = interaction.user
         
-        # 1. التحقق مما إذا كان المستخدم هو الأنر (استثناء من القيد)
         is_owner = (member.id == OWNER_ID)
 
-        # إذا لم يكن هو الأنر، نتحقق مما إذا كان قد أخذ حساباً من قبل
         if not is_owner and member.id in claimed_users:
             await interaction.response.send_message("❌ **لقد قمت بالحصول على حساب مسبقاً! لا يمكنك أخذ حساب آخر لمنع الاحتكار.**", ephemeral=True)
             return
@@ -45,7 +43,6 @@ class AccountView(discord.ui.View):
                 await interaction.response.send_message("❌ عذراً، نفدت الحسابات من المخزون تماماً! ترقب التحديث القادم.", ephemeral=True)
                 return
 
-            # قراءة أول حساب وتنظيفه من الفراغات
             account_line = lines[0].strip()
             
             if ":" in account_line:
@@ -56,7 +53,6 @@ class AccountView(discord.ui.View):
 
             is_low_stock = len(lines) <= 2
 
-            # إنشاء تصميم الحساب لإرساله بالخاص
             embed_acc = discord.Embed(
                 title="🎮 مبروك! حساب ماينكرفت الخاص بك",
                 description="إليك تفاصيل حسابك الجديد الذي تم سحبه خصيصاً لك:",
@@ -80,11 +76,9 @@ class AccountView(discord.ui.View):
                 await interaction.response.send_message("❌ **خاصك مغلق!** يرجى فتح الخاص (Direct Messages) لتتمكن من استلام الحساب.", ephemeral=True)
                 return
 
-            # حذف الحساب من الملف
             with open("accounts.txt", "w", encoding="utf-8") as f:
                 f.writelines(lines[1:])
 
-            # إذا لم يكن أنر، نسجله في القائمة حتى لا يأخذ حساباً ثانياً
             if not is_owner:
                 claimed_users.add(member.id)
                 await interaction.response.send_message(f"✅ **تم إرسال حساب جديد في الخاص يا {member.mention}! 🚀**", ephemeral=True)
@@ -94,7 +88,7 @@ class AccountView(discord.ui.View):
         except FileNotFoundError:
             await interaction.response.send_message("❌ خطأ: ملف الحسابات `accounts.txt` غير موجود في مجلد البوت.", ephemeral=True)
 
-# أمر !setup لإرسال لوحة التعليمات والزر الأخضر
+# --- 2. أمر !setup لإرسال لوحة الزر ---
 @bot.command(name="setup")
 @commands.has_permissions(administrator=True)
 async def setup_panel(ctx):
@@ -121,7 +115,56 @@ async def setup_panel(ctx):
     view = AccountView()
     await ctx.send(embed=embed, view=view)
 
-# تشغيل البوت بطريقة آمنة ومتوافقة مع Railway
+# --- 3. أمر §sent للإرسال اليدوي للفائزين بالجيف أواي ---
+@bot.command(name="sent")
+@commands.has_permissions(administrator=True)
+async def manual_send(ctx, member: discord.Member):
+    try:
+        with open("accounts.txt", "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        
+        if not lines:
+            await ctx.send("❌ عذراً، نفدت الحسابات من المخزون (`accounts.txt`) تماماً!")
+            return
+
+        account_line = lines[0].strip()
+        
+        if ":" in account_line:
+            email, password = account_line.split(":", 1)
+        else:
+            email = account_line
+            password = "غير محدد"
+
+        embed_acc = discord.Embed(
+            title="🎁 مبروك فوزك بالجيف أواي! حساب ماينكرفت الخاص بك",
+            description="إليك تفاصيل حسابك الجديد الذي تم إرساله لك يدوياً:",
+            color=discord.Color.gold()
+        )
+        embed_acc.add_field(name="📧 البريد الإلكتروني (Email)", value=f"`{email}`", inline=False)
+        embed_acc.add_field(name="🔑 كلمة المرور (Password)", value=f"`{password}`", inline=False)
+        embed_acc.set_footer(text="MCFA Giveaway System")
+
+        try:
+            await member.send(embed=embed_acc)
+        except discord.Forbidden:
+            await ctx.send(f"❌ **عذراً يا {ctx.author.mention}، خاص العضو {member.mention} مغلق!** لم أتمكن من إرسال الحساب له.")
+            return
+
+        # حذف الحساب المرسل من الملف
+        with open("accounts.txt", "w", encoding="utf-8") as f:
+            f.writelines(lines[1:])
+
+        await ctx.send(f"✅ **تم سحب حساب وإرساله بنجاح إلى الخاص لـ {member.mention}! 🎉**")
+        
+        try:
+            await ctx.message.delete()
+        except:
+            pass
+
+    except FileNotFoundError:
+        await ctx.send("❌ خطأ: ملف الحسابات `accounts.txt` غير موجود في مجلد البوت.")
+
+# تشغيل البوت
 if __name__ == "__main__":
     TOKEN = os.getenv("DISCORD_TOKEN")
     if TOKEN:
