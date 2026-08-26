@@ -1,3 +1,4 @@
+import os
 import discord
 from discord.ext import commands
 
@@ -6,7 +7,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="§", intents=intents)
 
 # قائمة لحفظ الأيديوهات للأشخاص الذين أخذوا حساباً مسبقاً
 claimed_users = set()
@@ -16,34 +17,8 @@ OWNER_ID = 1479080698009747519
 
 @bot.event
 async def on_ready():
-    print(f"تم تسجيل الدخول بنجاح كـ {bot.user}")
-
-# أمر !setup لإرسال لوحة التعليمات والزر الأخضر
-@bot.command(name="setup")
-@commands.has_permissions(administrator=True)
-async def setup_panel(ctx):
-    try:
-        await ctx.message.delete()
-    except:
-        pass
-    
-    embed = discord.Embed(
-        title="📖 تعليمات وكيفية استعمال نظام الحسابات",
-        description=(
-            "**أهلاً بك في نظام توزيع حسابات ماينكرفت المجانية!** 🎮\n\n"
-            "**🔹 كيفية الاستعمال:**\n"
-            "1️⃣ تأكد أن **رسائلك الخاصة (DM)** مفتوحة.\n"
-            "2️⃣ اضغط على **الزر الأخضر** بالأسفل (`إيجاد حساب`).\n"
-            "3️⃣ سيقوم البوت بسحب حساب جديد كلياً وإرساله لك في الخاص فوراً!\n\n"
-            "⚠️ **ملاحظة هامة:**\n"
-            "• لكل شخص حساب واحد فقط لضمان توزيع عادل للجميع."
-        ),
-        color=discord.Color.from_rgb(88, 101, 242)
-    )
-    embed.set_footer(text="MCFA Store System - نظام منع التكرار")
-    
-    view = AccountView()
-    await ctx.send(embed=embed, view=view)
+    print(f"✅ تم تسجيل الدخول بنجاح كـ {bot.user}")
+    await bot.change_presence(activity=discord.Game(name="§setup لإنشاء لوحة الحسابات"))
 
 # تصميم الزر التفاعلي
 class AccountView(discord.ui.View):
@@ -114,11 +89,42 @@ class AccountView(discord.ui.View):
                 claimed_users.add(member.id)
                 await interaction.response.send_message(f"✅ **تم إرسال حساب جديد في الخاص يا {member.mention}! 🚀**", ephemeral=True)
             else:
-                # رسالة خاصة للأنر تفيد بأنه سحب حساباً بصلاحيات المالك
                 await interaction.response.send_message(f"👑 **أهلاً بك يا أونر! تم سحب الحساب وإرساله لخاصك بنجاح (بدون قيود). 🚀**", ephemeral=True)
 
         except FileNotFoundError:
             await interaction.response.send_message("❌ خطأ: ملف الحسابات `accounts.txt` غير موجود في مجلد البوت.", ephemeral=True)
 
-# تشغيل البوت
-client.login(process.env.DISCORD_TOKEN);
+# أمر !setup لإرسال لوحة التعليمات والزر الأخضر
+@bot.command(name="setup")
+@commands.has_permissions(administrator=True)
+async def setup_panel(ctx):
+    try:
+        await ctx.message.delete()
+    except:
+        pass
+    
+    embed = discord.Embed(
+        title="📖 تعليمات وكيفية استعمال نظام الحسابات",
+        description=(
+            "**أهلاً بك في نظام توزيع حسابات ماينكرفت المجانية!** 🎮\n\n"
+            "**🔹 كيفية الاستعمال:**\n"
+            "1️⃣ تأكد أن **رسائلك الخاصة (DM)** مفتوحة.\n"
+            "2️⃣ اضغط على **الزر الأخضر** بالأسفل (`إيجاد حساب`).\n"
+            "3️⃣ سيقوم البوت بسحب حساب جديد كلياً وإرساله لك في الخاص فوراً!\n\n"
+            "⚠️ **ملاحظة هامة:**\n"
+            "• لكل شخص حساب واحد فقط لضمان توزيع عادل للجميع."
+        ),
+        color=discord.Color.from_rgb(88, 101, 242)
+    )
+    embed.set_footer(text="MCFA Store System - نظام منع التكرار")
+    
+    view = AccountView()
+    await ctx.send(embed=embed, view=view)
+
+# تشغيل البوت بطريقة آمنة ومتوافقة مع Railway
+if __name__ == "__main__":
+    TOKEN = os.getenv("DISCORD_TOKEN")
+    if TOKEN:
+        bot.run(TOKEN)
+    else:
+        print("❌ خطأ: لم يتم العثور على DISCORD_TOKEN في متغيرات البيئة!")
