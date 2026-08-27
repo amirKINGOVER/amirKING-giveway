@@ -1,6 +1,10 @@
 {
-    "minecraft": [
-        "account1@gmail.com:pass123",
-        "account2@gmail.com:pass456"
-    ]
+  "minecraft": [
+    "user1@gmail.com:password123",
+    "user2@gmail.com:password456"
+  ],
+  "netflix": [
+    "net1@gmail.com:pass1",
+    "net2@gmail.com:pass2"
+  ]
 }
