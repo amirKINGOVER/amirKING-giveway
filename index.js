@@ -1,80 +1,100 @@
-const { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const fs = require('fs');
-const path = require('path');
 
 const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
+    intents: [GatewayIntentBits.Guilds]
 });
 
+// قراءة الـ Token من متغيرات البيئة في ريلواي
 const TOKEN = process.env.GIVEAWAY_TOKEN || process.env.DISCORD_TOKEN;
-const stockFilePath = path.join(__dirname, 'stock.json');
 
-// دالة سحب حساب من الستوك
-function getStock(category) {
-    if (!fs.existsSync(stockFilePath)) return null;
-    let data = JSON.parse(fs.readFileSync(stockFilePath, 'utf8'));
-    if (!data[category] || data[category].length === 0) return null;
-    const account = data[category].shift();
-    fs.writeFileSync(stockFilePath, JSON.stringify(data, null, 4));
-    return account;
-}
+// تعريف أمر /giveaway
+const commands = [
+    new SlashCommandBuilder()
+        .setName('giveaway')
+        .setDescription('إنشاء جيف أواي لتوزيع الحسابات (زي نوفا)')
+        .addStringOption(option =>
+            option.setName('prize')
+                .setDescription('اسم الجائزة (مثلاً: Minecraft Account)')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('category')
+                .setDescription('اسم الفئة في ملف الستوك (مثلاً: minecraft)')
+                .setRequired(true))
+].map(command => command.toJSON());
 
 client.once('ready', async () => {
-    console.log(`✅ بوت الجيف أواي شغال بنجاح: ${client.user.tag}`);
-    
-    // تسجيل أوامر السلاش
-    const commands = [
-        new SlashCommandBuilder()
-            .setName('giveaway')
-            .setDescription('إنشاء جيف أواي جديد احترافي')
-            .addStringOption(opt => opt.Name('prize').setDescription('الجوائز أو الحساب المراد توزيعه').setRequired(true))
-            .addStringOption(opt => opt.Name('category').setDescription('نوع الحساب في الستوك (مثل: netflix, minecraft)').setRequired(true))
-            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    ];
+    console.log(`✅ البوت اشتغل بنجاح باسم: ${client.user.tag}`);
 
-    await client.application.commands.set(commands);
+    // تسجيل الأوامر تلقائياً أول ما يشتغل البوت
+    const rest = new REST({ version: '10' }).setToken(TOKEN);
+    try {
+        console.log('🔄 جاري تسجيل أوامر السلاش...');
+        await rest.put(
+            Routes.applicationCommands(client.user.id),
+            { body: commands },
+        );
+        console.log('✨ تم تسجيل الأوامر بنجاح في ديسكورد!');
+    } catch (error) {
+        console.error('❌ خطأ أثناء تسجيل الأوامر:', error);
+    }
 });
 
 client.on('interactionCreate', async interaction => {
-    if (interaction.isChatInputCommand()) {
-        if (interaction.commandName === 'giveaway') {
-            const prize = interaction.options.getString('prize');
-            const category = interaction.options.getString('category');
+    // 1. التعامل مع أمر /giveaway
+    if (interaction.isChatInputCommand() && interaction.commandName === 'giveaway') {
+        const prize = interaction.options.getString('prize');
+        const category = interaction.options.getString('category');
 
-            const embed = new EmbedBuilder()
-                .setTitle('🎉 **GIVEAWAY | جيف أواي جديد** 🎉')
-                .setDescription(`جائزة مقدمة من: ${interaction.user}\n\n🎁 الجائزة: **${prize}**\n\nاضغط على الزر بالأسفل للمشاركة والدخول في السحب!`)
-                .setColor(0x5865F2)
-                .setTimestamp();
+        const embed = new EmbedBuilder()
+            .setTitle('🎉 جيف أواي جديد لتوزيع الحسابات')
+            .setDescription(`**الجائزة:** ${prize}\n**الفئة:** ${category}\n\nاضغط على الزر بالأسفل للمشاركة والحصول على حسابك فوراً!`)
+            .setColor('#5865F2')
+            .setTimestamp();
 
-            const row = new ActionRowBuilder().addComponents(
+        const row = new ActionRowBuilder()
+            .addComponents(
                 new ButtonBuilder()
-                    .setCustomId(`join_gw_${category}`)
+                    .setCustomId(`claim_${category}`)
                     .setLabel('مشاركة 🎉')
-                    .setStyle(ButtonStyle.Success)
+                    .setStyle(ButtonStyle.Success),
             );
 
-            await interaction.reply({ content: '✅ تم بدء الجيف أواي بنجاح!', ephemeral: true });
-            await interaction.channel.send({ embeds: [embed], components: [row] });
-        }
-    } 
-    
-    else if (interaction.isButton()) {
-        if (interaction.customId.startsWith('join_gw_')) {
-            const category = interaction.customId.replace('join_gw_', '');
-            const account = getStock(category);
+        await interaction.reply({ embeds: [embed], components: [row] });
+    }
 
-            if (!account) {
-                return interaction.reply({ content: '❌ عذراً، نفدت كمية الحسابات (Stock) حالياً!', ephemeral: true });
+    // 2. التعامل مع الضغط على زر المشاركة وسحب الحساب
+    if (interaction.isButton() && interaction.customId.startsWith('claim_')) {
+        const category = interaction.customId.replace('claim_', '');
+
+        try {
+            // قراءة ملف الستوك
+            if (!fs.existsSync('./stock.json')) {
+                return interaction.reply({ content: '❌ ملف `stock.json` غير موجود!', ephemeral: true });
             }
 
-            // إرسال الجائزة في الخاص مثل نظام نوفا
-            try {
-                await interaction.user.send(`🎉 **مبروك لقد فزت في الجيف أواي!**\n🎁 الحساب/الجوائز:\n\`\`\`${account}\`\`\``);
-                await interaction.reply({ content: '🏆 مبروك! لقد فزت وتم إرسال تفاصيل الحساب على الخاص الخاص بك.', ephemeral: true });
-            } catch (err) {
-                await interaction.reply({ content: '⚠️ لقد فزت، ولكن يبدو أن رسائل الخاص (DM) مغلقة لديك! افتح الخاص واستمر.', ephemeral: true });
+            const rawData = fs.readFileSync('./stock.json');
+            let stockData = JSON.parse(rawData);
+
+            // التحقق من وجود الفئة وأن فيها حسابات
+            if (!stockData[category] || stockData[category].length === 0) {
+                return interaction.reply({ content: `❌ عذراً، نفدت حسابات فئة **${category}** حالياً!`, ephemeral: true });
             }
+
+            // سحب أول حساب من القائمة
+            const account = stockData[category].shift();
+
+            // حفظ التحديثات في الملف (حذف الحساب المستخدم لضمان عدم تكراره)
+            fs.writeFileSync('./stock.json', JSON.stringify(stockData, null, 4));
+
+            // إرسال الحساب للمستخدم على الخاص (DM)
+            await interaction.user.send(`🎁 **مبروك فوزك بالجائزة!**\nبيانات الحساب الخاص بك:\n\`\`\`${account}\`\`\``);
+
+            await interaction.reply({ content: '✅ تم إرسال الحساب إلى رسائلك الخاصة (DM)! تحقق من الخاص.', ephemeral: true });
+
+        } catch (error) {
+            console.error('❌ خطأ أثناء توزيع الحساب:', error);
+            await interaction.reply({ content: '❌ حدث خطأ أثناء محاولة تسليم الحساب، يرجى مراجعة المشرف.', ephemeral: true });
         }
     }
 });
