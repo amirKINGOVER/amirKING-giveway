@@ -1,222 +1,82 @@
-const { Client, GatewayIntentBits, PermissionsBitField, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType } = require('discord.js');
+const { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers
-    ]
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
 });
 
-// ملف تخزين الحسابات (Stock) محلياً
-const stockFile = path.join(__dirname, 'stocks.json');
+const TOKEN = process.env.GIVEAWAY_TOKEN || process.env.DISCORD_TOKEN;
+const stockFilePath = path.join(__dirname, 'stock.json');
 
-// دالة لجلب الحسابات
-function loadStocks() {
-    if (!fs.existsSync(stockFile)) {
-        fs.writeFileSync(stockFile, JSON.stringify({}));
-    }
-    try {
-        return JSON.parse(fs.readFileSync(stockFile, 'utf8'));
-    } catch (e) {
-        return {};
-    }
+// دالة سحب حساب من الستوك
+function getStock(category) {
+    if (!fs.existsSync(stockFilePath)) return null;
+    let data = JSON.parse(fs.readFileSync(stockFilePath, 'utf8'));
+    if (!data[category] || data[category].length === 0) return null;
+    const account = data[category].shift();
+    fs.writeFileSync(stockFilePath, JSON.stringify(data, null, 4));
+    return account;
 }
 
-// دالة لحفظ الحسابات
-function saveStocks(data) {
-    fs.writeFileSync(stockFile, JSON.stringify(data, null, 2));
-}
+client.once('ready', async () => {
+    console.log(`✅ بوت الجيف أواي شغال بنجاح: ${client.user.tag}`);
+    
+    // تسجيل أوامر السلاش
+    const commands = [
+        new SlashCommandBuilder()
+            .setName('giveaway')
+            .setDescription('إنشاء جيف أواي جديد احترافي')
+            .addStringOption(opt => opt.Name('prize').setDescription('الجوائز أو الحساب المراد توزيعه').setRequired(true))
+            .addStringOption(opt => opt.Name('category').setDescription('نوع الحساب في الستوك (مثل: netflix, minecraft)').setRequired(true))
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    ];
 
-client.once('ready', () => {
-    console.log(`✅ تم تسجيل الدخول بنجاح باسم: ${client.user.tag}`);
-    client.user.setActivity('§help لتسليم الحسابات وإدارة الستوك', { type: 3 });
+    await client.application.commands.set(commands);
 });
 
-// ترحيب الأعضاء الجدد
-client.on('guildMemberAdd', member => {
-    const channel = member.guild.systemChannel;
-    if (!channel) return;
-    channel.send(`🎉 أهلاً بك يا ${member} في السيرفر! نورتنا يا ملك! 👑`);
-});
-
-// الأوامر النصية واختصارات ( § )
-client.on('messageCreate', async message => {
-    if (message.author.bot) return;
-
-    const prefix = '§';
-    if (!message.content.startsWith(prefix)) return;
-
-    const args = message.content.slice(prefix.length).trim().split(/ +/);
-    const command = args.shift().toLowerCase();
-
-    // 1. أمر المساعدة (Help)
-    if (command === 'help') {
-        return message.reply(`
-📜 **قائمة أوامر بوت حسابات amirKING:**
-• \`§addstock [القسم] [الحساب]\` - لإضافة حساب جديد للستوك (مسؤولين).
-• \`§stock\` - لعرض عدد الحسابات المتوفرة بكل قسم.
-• \`§sent @User [القسم]\` - سحب حساب تلقائي وإرساله للفائز على الخاص.
-• \`§warn @User [السبب]\` - لتحذير عضو مخالف.
-• \`§clear [عدد]\` - لمسح الرسائل (من 1 إلى 99).
-• \`§ticket\` - إرسال لوحة فتح التذاكر.
-        `);
-    }
-
-    // 2. أمر إضافة حساب للستوك (Add Stock)
-    if (command === 'addstock') {
-        if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-            return message.reply('❌ هذا الأمر خاص بالمسؤولين فقط!');
-        }
-
-        const category = args[0]?.toLowerCase();
-        const accountData = args.slice(1).join(' ');
-
-        if (!category || !accountData) {
-            return message.reply('⚠️ الاستخدام الصحيح:\n`§addstock minecraft email:password`');
-        }
-
-        const stocks = loadStocks();
-        if (!stocks[category]) {
-            stocks[category] = [];
-        }
-
-        stocks[category].push(accountData);
-        saveStocks(stocks);
-
-        return message.reply(`✅ تم إضافة الحساب بنجاح إلى قسم **[ ${category} ]**!\n📦 إجمالي الحسابات في هذا القسم: **${stocks[category].length}**`);
-    }
-
-    // 3. أمر عرض الحسابات المتوفرة (Stock Status)
-    if (command === 'stock') {
-        const stocks = loadStocks();
-        const categories = Object.keys(stocks);
-
-        if (categories.length === 0) {
-            return message.reply('📦 لا توجد أي حسابات مخزنة في الستوك حالياً!');
-        }
-
-        let stockList = '📦 **حالة الستوك الحالية:**\n';
-        for (const cat of categories) {
-            stockList += `• **${cat}**: \`${stocks[cat].length}\` حساب متوفر\n`;
-        }
-
-        return message.reply(stockList);
-    }
-
-    // 4. أمر إرسال وتسليم الحساب التلقائي للفائز ( §sent @User category )
-    if (command === 'sent') {
-        if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-            return message.reply('❌ هذا الأمر خاص بالمسؤولين فقط لتسليم الجوائز!');
-        }
-
-        const target = message.mentions.members.first();
-        const category = args[1]?.toLowerCase();
-
-        if (!target) {
-            return message.reply('⚠️ يرجى منشن الشخص الفائز! مثال: `§sent @User minecraft`');
-        }
-
-        if (!category) {
-            return message.reply('⚠️ يرجى تحديد قسم الحسابات! (مثال: `minecraft`, `netflix`)');
-        }
-
-        const stocks = loadStocks();
-
-        if (!stocks[category] || stocks[category].length === 0) {
-            return message.reply(`❌ عذراً، لا توجد حسابات متوفرة حالياً في قسم **[ ${category} ]**!`);
-        }
-
-        // سحب أول حساب من القائمة وحذفه من الستوك
-        const accountInfo = stocks[category].shift(); 
-        saveStocks(stocks); 
-
-        try {
-            // إرسال الحساب للفائز على الخاص
-            await target.send(`🎁 **مبروك يا ملك! لقد فزت بالجائزة!**\n\n📌 **قسم الجائزة:** ${category}\n🔐 **بيانات حسابك:**\n\`\`\`text\n${accountInfo}\n\`\`\`\n⚠️ يرجى الاحتفاظ بالبيانات وعدم مشاركتها.`);
-            
-            return message.reply(`✅ تم سحب حساب من قسم **[ ${category} ]** وإرساله إلى العضو ${target} بنجاح على الخاص! 📬 (المتبقي في الستوك: ${stocks[category].length})`);
-        } catch (error) {
-            // لو خاص العضو مقفل، نرجع الحساب للستوك
-            stocks[category].unshift(accountInfo);
-            saveStocks(stocks);
-            return message.reply(`❌ فشل إرسال الحساب إلى ${target} لأن خاص (الرسائل الخاصة) عنده مغلق! (تمت إعادة الحساب للستوك).`);
-        }
-    }
-
-    // 5. أمر لوحة التذاكر (Ticket)
-    if (command === 'ticket') {
-        if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return message.reply('❌ للـ المسؤولين فقط!');
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('create_ticket').setLabel('🎫 فتح تذكرة جديدة').setStyle(ButtonStyle.Primary)
-        );
-        await message.channel.send({ content: '🎟️ **نظام التذاكر والدعم الفني:**\nاضغط على الزر أدناه لفتح تذكرة:', components: [row] });
-        return message.delete().catch(() => {});
-    }
-
-    // 6. أمر التحذير (Warn)
-    if (command === 'warn') {
-        if (!message.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) return message.reply('❌ ليس لديك صلاحية!');
-        const target = message.mentions.members.first();
-        const reason = args.slice(1).join(' ') || 'بدون سبب';
-        if (!target) return message.reply('⚠️ يرجى منشن العضو!');
-        return message.reply(`✅ تم تحذير العضو ${target.user.tag} بنجاح!\n📝 **السبب:** ${reason}`);
-    }
-
-    // 7. أمر مسح الشات (Clear)
-    if (command === 'clear') {
-        if (!message.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) return message.reply('❌ ليس لديك صلاحية!');
-        const count = parseInt(args[0]);
-        if (isNaN(count) || count < 1 || count > 99) return message.reply('⚠️ حدد رقماً بين 1 و 99');
-        await message.channel.bulkDelete(count + 1, true);
-        const msg = await message.channel.send(`🧹 تم مسح **${count}** رسالة.`);
-        setTimeout(() => msg.delete().catch(() => {}), 4000);
-    }
-});
-
-// نظام الأزرار (فتح وإغلاق التذاكر)
 client.on('interactionCreate', async interaction => {
-    if (!interaction.isButton()) return;
+    if (interaction.isChatInputCommand()) {
+        if (interaction.commandName === 'giveaway') {
+            const prize = interaction.options.getString('prize');
+            const category = interaction.options.getString('category');
 
-    if (interaction.customId === 'create_ticket') {
-        const guild = interaction.guild;
-        const member = interaction.member;
-        const channelName = `ticket-${member.user.username}`;
-        
-        try {
-            const ticketChannel = await guild.channels.create({
-                name: channelName,
-                type: ChannelType.GuildText,
-                permissionOverwrites: [
-                    { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-                    { id: member.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
-                    { id: client.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ManageChannels] }
-                ],
-            });
+            const embed = new EmbedBuilder()
+                .setTitle('🎉 **GIVEAWAY | جيف أواي جديد** 🎉')
+                .setDescription(`جائزة مقدمة من: ${interaction.user}\n\n🎁 الجائزة: **${prize}**\n\nاضغط على الزر بالأسفل للمشاركة والدخول في السحب!`)
+                .setColor(0x5865F2)
+                .setTimestamp();
 
-            const closeRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('close_ticket').setLabel('🔒 إغلاق التذكرة').setStyle(ButtonStyle.Danger)
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`join_gw_${category}`)
+                    .setLabel('مشاركة 🎉')
+                    .setStyle(ButtonStyle.Success)
             );
 
-            await ticketChannel.send({
-                content: `مرحباً ${member} 👋\nطرحت إدارتنا هنا لمساعدتك. يرجى كتابة مشكلتك بالتفصيل.`,
-                components: [closeRow]
-            });
-
-            return interaction.reply({ content: `✅ تم إنشاء تذكرتك بنجاح: ${ticketChannel}`, ephemeral: true });
-        } catch (error) {
-            return interaction.reply({ content: '❌ حدث خطأ أثناء إنشاء التذكرة.', ephemeral: true });
+            await interaction.reply({ content: '✅ تم بدء الجيف أواي بنجاح!', ephemeral: true });
+            await interaction.channel.send({ embeds: [embed], components: [row] });
         }
-    }
+    } 
+    
+    else if (interaction.isButton()) {
+        if (interaction.customId.startsWith('join_gw_')) {
+            const category = interaction.customId.replace('join_gw_', '');
+            const account = getStock(category);
 
-    if (interaction.customId === 'close_ticket') {
-        const channel = interaction.channel;
-        await interaction.reply({ content: '🔒 جاري إغلاق وحذف التذكرة خلال 5 ثوانٍ...' });
-        setTimeout(() => channel.delete().catch(() => {}), 5000);
+            if (!account) {
+                return interaction.reply({ content: '❌ عذراً، نفدت كمية الحسابات (Stock) حالياً!', ephemeral: true });
+            }
+
+            // إرسال الجائزة في الخاص مثل نظام نوفا
+            try {
+                await interaction.user.send(`🎉 **مبروك لقد فزت في الجيف أواي!**\n🎁 الحساب/الجوائز:\n\`\`\`${account}\`\`\``);
+                await interaction.reply({ content: '🏆 مبروك! لقد فزت وتم إرسال تفاصيل الحساب على الخاص الخاص بك.', ephemeral: true });
+            } catch (err) {
+                await interaction.reply({ content: '⚠️ لقد فزت، ولكن يبدو أن رسائل الخاص (DM) مغلقة لديك! افتح الخاص واستمر.', ephemeral: true });
+            }
+        }
     }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(TOKEN);
